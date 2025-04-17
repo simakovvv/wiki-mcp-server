@@ -1,0 +1,103 @@
+{
+    "version": "1.0.0",
+    "metadata": {
+        "name": "Wikipedia Search MCP",
+        "description": "A server for searching and analyzing Wikipedia articles using semantic analysis and LLM-based relevance evaluation",
+        "author": "Vladimir",
+        "license": "MIT",
+        "repository": "https://github.com/simakovvv/wiki-mcp-server"
+    },
+    "api": {
+        "version": "1.0.0",
+        "base_path": "/api/v1",
+        "documentation": {
+            "openapi": "3.0.0",
+            "swagger_ui": true,
+            "redoc": true
+        }
+    },
+    "security": {
+        "authentication": {
+            "enabled": true,
+            "type": "jwt",
+            "issuer": "wiki-mcp-server",
+            "audience": "api-users"
+        },
+        "rate_limiting": {
+            "enabled": true,
+            "requests_per_minute": 60
+        },
+        "cors": {
+            "enabled": true,
+            "allowed_origins": ["*"],
+            "allowed_methods": ["GET", "POST"],
+            "allowed_headers": ["*"]
+        }
+    },
+    "monitoring": {
+        "metrics": {
+            "enabled": true,
+            "provider": "prometheus",
+            "endpoint": "/metrics"
+        },
+        "logging": {
+            "enabled": true,
+            "level": "INFO",
+            "format": "json",
+            "provider": "elasticsearch"
+        },
+        "health": {
+            "enabled": true,
+            "endpoint": "/health",
+            "checks": [
+                "database",
+                "llm_service",
+                "wikipedia_api"
+            ]
+        }
+    },
+    "performance": {
+        "caching": {
+            "enabled": true,
+            "provider": "redis",
+            "ttl": 3600
+        },
+        "async_processing": {
+            "enabled": true,
+            "max_workers": 4
+        },
+        "connection_pooling": {
+            "enabled": true,
+            "max_connections": 10
+        }
+    },
+    "llm": {
+        "provider": "openrouter",
+        "models": {
+            "default": "gpt-3.5-turbo",
+            "available": [
+                "gpt-3.5-turbo",
+                "gpt-4",
+                "claude-2",
+                "mistral-7b"
+            ]
+        },
+        "rate_limits": {
+            "requests_per_minute": 60,
+            "tokens_per_minute": 100000
+        }
+    },
+    "wikipedia": {
+        "api": {
+            "base_url": "https://en.wikipedia.org/w/api.php",
+            "rate_limit": 50,
+            "user_agent": "WikipediaSearchMCP/1.0.0"
+        },
+        "image_extraction": {
+            "enabled": true,
+            "max_images": 5,
+            "min_width": 100,
+            "min_height": 100
+        }
+    }
+} 

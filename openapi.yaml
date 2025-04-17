@@ -1,0 +1,285 @@
+openapi: 3.0.0
+info:
+  title: Wikipedia Search MCP API
+  description: API for searching and analyzing Wikipedia articles using semantic analysis and LLM-based relevance evaluation
+  version: 1.0.0
+  contact:
+    name: Vladimir
+    url: https://github.com/simakovvv
+    email: simakovvv@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local development server
+  - url: https://api.example.com/api/v1
+    description: Production server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Article:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Article title
+        snippet:
+          type: string
+          description: Article snippet
+        url:
+          type: string
+          format: uri
+          description: Article URL
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/Image'
+          description: Article images
+
+    Image:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Image URL
+        caption:
+          type: string
+          description: Image caption
+        alt_text:
+          type: string
+          description: Image alternative text
+
+    SearchRequest:
+      type: object
+      properties:
+        topic:
+          type: string
+          description: Search topic
+        limit:
+          type: integer
+          default: 5
+          description: Maximum number of results
+        include_images:
+          type: boolean
+          default: false
+          description: Include images in results
+        model:
+          type: string
+          enum: [gpt-3.5-turbo, gpt-4, claude-2, mistral-7b]
+          default: gpt-3.5-turbo
+          description: LLM model for evaluation
+
+    SearchResponse:
+      type: object
+      properties:
+        articles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Article'
+
+    EvaluateRequest:
+      type: object
+      properties:
+        article:
+          $ref: '#/components/schemas/Article'
+        topic:
+          type: string
+          description: Topic to evaluate against
+        model:
+          type: string
+          enum: [gpt-3.5-turbo, gpt-4, claude-2, mistral-7b]
+          default: gpt-3.5-turbo
+          description: LLM model for evaluation
+
+    EvaluateResponse:
+      type: object
+      properties:
+        relevance_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Relevance score between 0 and 1
+        explanation:
+          type: string
+          description: Explanation of the relevance score
+
+    AnalyzeRequest:
+      type: object
+      properties:
+        articles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Article'
+        topic:
+          type: string
+          description: Topic to analyze against
+        model:
+          type: string
+          enum: [gpt-3.5-turbo, gpt-4, claude-2, mistral-7b]
+          default: gpt-3.5-turbo
+          description: LLM model for evaluation
+
+    AnalyzeResponse:
+      type: object
+      properties:
+        similarity_scores:
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+                description: Article title
+              score:
+                type: number
+                format: float
+                minimum: 0
+                maximum: 1
+                description: Similarity score between 0 and 1
+
+    StatsResponse:
+      type: object
+      properties:
+        total_requests:
+          type: integer
+          description: Total number of requests processed
+        endpoints:
+          type: object
+          properties:
+            "/search":
+              type: integer
+            "/evaluate":
+              type: integer
+            "/analyze":
+              type: integer
+        models:
+          type: object
+          properties:
+            "gpt-3.5-turbo":
+              type: integer
+            "gpt-4":
+              type: integer
+            "claude-2":
+              type: integer
+            "mistral-7b":
+              type: integer
+        errors:
+          type: integer
+          description: Total number of errors
+        last_updated:
+          type: string
+          format: date-time
+          description: Last statistics update timestamp
+
+paths:
+  /search:
+    post:
+      summary: Search Wikipedia articles
+      description: Search Wikipedia articles by topic and evaluate their relevance
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: Successful search
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+        '429':
+          description: Too many requests
+        '500':
+          description: Internal server error
+
+  /evaluate:
+    post:
+      summary: Evaluate article relevance
+      description: Evaluate the relevance of an article to a given topic
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluateRequest'
+      responses:
+        '200':
+          description: Successful evaluation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateResponse'
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+        '429':
+          description: Too many requests
+        '500':
+          description: Internal server error
+
+  /analyze:
+    post:
+      summary: Analyze semantic similarity
+      description: Analyze semantic similarity of articles to a given topic
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+      responses:
+        '200':
+          description: Successful analysis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeResponse'
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+        '429':
+          description: Too many requests
+        '500':
+          description: Internal server error
+
+  /stats:
+    get:
+      summary: Get usage statistics
+      description: Get server usage statistics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful retrieval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsResponse'
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal server error 
