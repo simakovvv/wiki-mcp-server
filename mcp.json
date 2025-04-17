@@ -1,0 +1,19 @@
+{
+    "name": "Wikipedia Search MCP",
+    "version": "1.0.0",
+    "description": "MCP server for searching and analyzing Wikipedia articles",
+    "entrypoint": "python3 wiki_mcp_server.py",
+    "environment": {
+        "OPENROUTER_API_KEY": "your_openrouter_api_key_here"
+    },
+    "requirements": [
+        "requests",
+        "nltk",
+        "spacy",
+        "scikit-learn"
+    ],
+    "capabilities": {
+        "tools": true,
+        "resources": true
+    }
+} 

@@ -1,0 +1,317 @@
+import sys
+import json
+import requests
+import re
+import nltk
+from nltk.corpus import wordnet
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+import spacy
+from sklearn.feature_extraction.text import TfidfVectorizer
+import time
+from datetime import datetime
+import uuid
+import os
+
+# Initialize NLTK and spaCy
+nltk.download('punkt')
+nltk.download('wordnet')
+nltk.download('averaged_perceptron_tagger')
+nltk.download('punkt_tab')
+nltk.download('stopwords')
+nlp = spacy.load("en_core_web_sm")
+lemmatizer = WordNetLemmatizer()
+
+# Configuration
+MAX_ARTICLES_PER_PHRASE = 5
+REQUEST_DELAY = 1
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+
+class WikipediaMCPServer:
+    def __init__(self):
+        self.tools = {
+            "search_articles": {
+                "name": "search_articles",
+                "description": "Search for Wikipedia articles by phrase",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search phrase"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of results",
+                            "default": 5
+                        }
+                    },
+                    "required": ["query"]
+                }
+            },
+            "get_article": {
+                "name": "get_article",
+                "description": "Get Wikipedia article by title",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": {
+                            "type": "string",
+                            "description": "Article title"
+                        }
+                    },
+                    "required": ["title"]
+                }
+            },
+            "evaluate_relevance": {
+                "name": "evaluate_relevance",
+                "description": "Evaluate article relevance to a search phrase",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "article_title": {
+                            "type": "string",
+                            "description": "Article title"
+                        },
+                        "article_snippet": {
+                            "type": "string",
+                            "description": "Article snippet"
+                        },
+                        "search_phrase": {
+                            "type": "string",
+                            "description": "Search phrase"
+                        }
+                    },
+                    "required": ["article_title", "article_snippet", "search_phrase"]
+                }
+            }
+        }
+        
+        self.resources = {
+            "article": {
+                "pattern": "wiki://{title}",
+                "description": "Access Wikipedia article by title"
+            },
+            "search": {
+                "pattern": "wiki://search/{query}",
+                "description": "Search Wikipedia articles"
+            }
+        }
+
+    def handle_request(self, request):
+        """
+        Handle MCP request
+        """
+        try:
+            if request["type"] == "get_tools":
+                return self.get_tools()
+            elif request["type"] == "get_resources":
+                return self.get_resources()
+            elif request["type"] == "call_tool":
+                return self.call_tool(request["name"], request["parameters"])
+            elif request["type"] == "get_resource":
+                return self.get_resource(request["url"])
+            else:
+                return {"error": f"Unknown request type: {request['type']}"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    def get_tools(self):
+        """
+        Return available tools
+        """
+        return {"tools": list(self.tools.values())}
+
+    def get_resources(self):
+        """
+        Return available resources
+        """
+        return {"resources": list(self.resources.values())}
+
+    def call_tool(self, name, parameters):
+        """
+        Call specific tool with parameters
+        """
+        if name == "search_articles":
+            return self.search_articles(**parameters)
+        elif name == "get_article":
+            return self.get_article(**parameters)
+        elif name == "evaluate_relevance":
+            return self.evaluate_relevance(**parameters)
+        else:
+            return {"error": f"Unknown tool: {name}"}
+
+    def get_resource(self, url):
+        """
+        Get resource by URL
+        """
+        if url.startswith("wiki://"):
+            path = url[7:]
+            if path.startswith("search/"):
+                query = path[7:]
+                return self.search_articles(query=query)
+            else:
+                return self.get_article(title=path)
+        return {"error": f"Invalid resource URL: {url}"}
+
+    def search_articles(self, query, limit=5):
+        """
+        Search Wikipedia articles
+        """
+        url = "https://en.wikipedia.org/w/api.php"
+        
+        params = {
+            "action": "query",
+            "list": "search",
+            "srsearch": query,
+            "srlimit": limit,
+            "format": "json",
+            "srprop": "snippet|titlesnippet|categorysnippet",
+            "srwhat": "nearmatch",
+            "srnamespace": 0,
+            "srredirects": "exclude"
+        }
+        
+        time.sleep(REQUEST_DELAY)
+        response = requests.get(url, params=params)
+        data = response.json()
+        results = data.get("query", {}).get("search", [])
+        
+        return {
+            "results": [
+                {
+                    "title": article.get("title", ""),
+                    "url": f"https://en.wikipedia.org/wiki/{article.get('title', '').replace(' ', '_')}",
+                    "snippet": article.get("snippet", ""),
+                    "relevance_score": self.evaluate_relevance_llm(article, query)
+                }
+                for article in results
+            ]
+        }
+
+    def get_article(self, title):
+        """
+        Get Wikipedia article by title
+        """
+        url = "https://en.wikipedia.org/w/api.php"
+        
+        params = {
+            "action": "query",
+            "prop": "extracts|info",
+            "titles": title,
+            "format": "json",
+            "explaintext": True,
+            "inprop": "url"
+        }
+        
+        time.sleep(REQUEST_DELAY)
+        response = requests.get(url, params=params)
+        data = response.json()
+        pages = data.get("query", {}).get("pages", {})
+        
+        if not pages:
+            return {"error": "Article not found"}
+        
+        page = list(pages.values())[0]
+        return {
+            "title": page.get("title", ""),
+            "url": page.get("fullurl", ""),
+            "extract": page.get("extract", ""),
+            "lastmodified": page.get("touched", "")
+        }
+
+    def evaluate_relevance(self, article_title, article_snippet, search_phrase):
+        """
+        Evaluate article relevance
+        """
+        return {
+            "score": self.evaluate_relevance_llm(
+                {"title": article_title, "snippet": article_snippet},
+                search_phrase
+            )
+        }
+
+    def evaluate_relevance_llm(self, article, search_phrase):
+        """
+        Evaluate article relevance using OpenRouter
+        """
+        article_title = article.get("title", "")
+        article_snippet = article.get("snippet", "")
+        
+        prompt = f"""
+        You are an expert evaluator tasked with precisely assessing the relevance of a Wikipedia article to a given search phrase.
+
+        ### Search Phrase:
+        {search_phrase}
+
+        ### Wikipedia Article:
+        - **Title:** {article_title}
+        - **Snippet:** {article_snippet}
+
+        ### Strict Evaluation Criteria:
+        - SCORE 0.9-1.0: Article is exactly about the search phrase, highly specific, and directly matches.
+        - SCORE 0.7-0.8: Article strongly related but broader or less specific.
+        - SCORE 0.4-0.6: Moderately related, mentions key concepts briefly.
+        - SCORE 0.1-0.3: Loosely related, minimal relevance.
+        - SCORE 0.0: Not relevant or off-topic.
+
+        ### Your Task:
+        Provide the exact numeric SCORE according to the criteria above, followed by a concise REASON (one sentence).
+
+        ### Output (strictly follow this format):
+        SCORE: [0.0-1.0]
+        REASON: [one concise sentence]
+        """
+        
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "mistralai/mistral-7b-instruct",
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+            )
+            
+            content = response.json()["choices"][0]["message"]["content"]
+            score_match = re.search(r"SCORE:\s*([0-9.]+)", content)
+            if score_match:
+                return float(score_match.group(1))
+            return 0.0
+                
+        except Exception as e:
+            print(f"Error evaluating relevance: {str(e)}")
+            return 0.0
+
+def main():
+    """
+    Main function to run the MCP server
+    """
+    server = WikipediaMCPServer()
+    
+    # Read from stdin and write to stdout
+    while True:
+        try:
+            # Read request
+            line = sys.stdin.readline()
+            if not line:
+                break
+                
+            request = json.loads(line)
+            
+            # Process request
+            response = server.handle_request(request)
+            
+            # Write response
+            sys.stdout.write(json.dumps(response) + "\n")
+            sys.stdout.flush()
+            
+        except Exception as e:
+            sys.stderr.write(f"Error: {str(e)}\n")
+            sys.stderr.flush()
+
+if __name__ == "__main__":
+    main() 
