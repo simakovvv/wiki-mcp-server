@@ -12,6 +12,12 @@ import time
 from datetime import datetime
 import uuid
 import os
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
+from dotenv import load_dotenv
 
 # Initialize NLTK and spaCy
 nltk.download('punkt')
@@ -26,6 +32,73 @@ lemmatizer = WordNetLemmatizer()
 MAX_ARTICLES_PER_PHRASE = 5
 REQUEST_DELAY = 1
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+
+app = FastAPI()
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Models
+class Article(BaseModel):
+    title: str
+    snippet: str
+    url: str
+
+class SearchRequest(BaseModel):
+    topic: str
+    limit: int = 5
+    model: str = "gpt-3.5-turbo"
+
+class EvaluateRequest(BaseModel):
+    article: Article
+    model: str = "gpt-3.5-turbo"
+
+class AnalyzeRequest(BaseModel):
+    article: Article
+    model: str = "gpt-3.5-turbo"
+
+# Statistics
+STATS_FILE = "server_stats.json"
+
+def load_stats():
+    if os.path.exists(STATS_FILE):
+        with open(STATS_FILE, "r") as f:
+            return json.load(f)
+    return {
+        "total_requests": 0,
+        "endpoints": {},
+        "models": {},
+        "errors": 0,
+        "last_update": time.time()
+    }
+
+def save_stats(stats):
+    stats["last_update"] = time.time()
+    with open(STATS_FILE, "w") as f:
+        json.dump(stats, f)
+
+def update_stats(endpoint, model, error=False):
+    stats = load_stats()
+    stats["total_requests"] += 1
+    
+    if endpoint not in stats["endpoints"]:
+        stats["endpoints"][endpoint] = 0
+    stats["endpoints"][endpoint] += 1
+    
+    if model not in stats["models"]:
+        stats["models"][model] = 0
+    stats["models"][model] += 1
+    
+    if error:
+        stats["errors"] += 1
+    
+    save_stats(stats)
 
 class WikipediaMCPServer:
     def __init__(self):
@@ -286,6 +359,142 @@ class WikipediaMCPServer:
             print(f"Error evaluating relevance: {str(e)}")
             return 0.0
 
+@app.get("/search")
+async def search(topic: str, limit: int = 5, model: str = "gpt-3.5-turbo"):
+    async def generate():
+        try:
+            update_stats("search", model)
+            
+            # Generate search query using LLM
+            headers = {
+                "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
+                "Content-Type": "application/json"
+            }
+            
+            prompt = f"Generate {limit} Wikipedia article titles about {topic}"
+            data = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}]
+            }
+            
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=data
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(status_code=500, detail="Failed to generate search query")
+            
+            titles = response.json()["choices"][0]["message"]["content"].split("\n")
+            
+            for title in titles:
+                if not title.strip():
+                    continue
+                    
+                # Search Wikipedia
+                wiki_url = f"https://en.wikipedia.org/w/api.php"
+                params = {
+                    "action": "query",
+                    "format": "json",
+                    "list": "search",
+                    "srsearch": title,
+                    "srlimit": 1
+                }
+                
+                wiki_response = requests.get(wiki_url, params=params)
+                if wiki_response.status_code != 200:
+                    continue
+                
+                results = wiki_response.json()
+                if not results.get("query", {}).get("search"):
+                    continue
+                
+                article = results["query"]["search"][0]
+                yield f"data: {json.dumps({
+                    'title': article['title'],
+                    'snippet': article['snippet'],
+                    'url': f"https://en.wikipedia.org/wiki/{article['title'].replace(' ', '_')}"
+                })}\n\n"
+                
+        except Exception as e:
+            update_stats("search", model, error=True)
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+@app.post("/evaluate")
+async def evaluate(request: EvaluateRequest):
+    try:
+        update_stats("evaluate", request.model)
+        
+        headers = {
+            "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
+            "Content-Type": "application/json"
+        }
+        
+        prompt = f"Evaluate the relevance of this article to the topic: {request.article.title}\n\n{request.article.snippet}"
+        data = {
+            "model": request.model,
+            "messages": [{"role": "user", "content": prompt}]
+        }
+        
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=data
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to evaluate article")
+        
+        return {
+            "relevance": response.json()["choices"][0]["message"]["content"],
+            "article": request.article
+        }
+        
+    except Exception as e:
+        update_stats("evaluate", request.model, error=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/analyze")
+async def analyze(request: AnalyzeRequest):
+    try:
+        update_stats("analyze", request.model)
+        
+        headers = {
+            "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
+            "Content-Type": "application/json"
+        }
+        
+        prompt = f"Analyze this article and provide key insights: {request.article.title}\n\n{request.article.snippet}"
+        data = {
+            "model": request.model,
+            "messages": [{"role": "user", "content": prompt}]
+        }
+        
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=data
+        )
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to analyze article")
+        
+        return {
+            "analysis": response.json()["choices"][0]["message"]["content"],
+            "article": request.article
+        }
+        
+    except Exception as e:
+        update_stats("analyze", request.model, error=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/stats")
+async def stats():
+    return load_stats()
+
 def main():
     """
     Main function to run the MCP server
@@ -314,4 +523,5 @@ def main():
             sys.stderr.flush()
 
 if __name__ == "__main__":
-    main() 
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000) 

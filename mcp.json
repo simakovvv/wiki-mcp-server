@@ -1,19 +1,49 @@
 {
-    "name": "Wikipedia Search MCP",
+    "name": "wiki-mcp-server",
     "version": "1.0.0",
     "description": "MCP server for searching and analyzing Wikipedia articles",
     "entrypoint": "python3 wiki_mcp_server.py",
     "environment": {
-        "OPENROUTER_API_KEY": "your_openrouter_api_key_here"
+        "OPENROUTER_API_KEY": "your_api_key_here"
     },
     "requirements": [
-        "requests",
-        "nltk",
-        "spacy",
-        "scikit-learn"
+        "requests==2.31.0",
+        "nltk==3.8.1",
+        "spacy==3.7.2",
+        "scikit-learn==1.3.2",
+        "python-dotenv==1.0.0",
+        "fastapi==0.104.1",
+        "uvicorn==0.24.0",
+        "pydantic==2.5.2",
+        "beautifulsoup4==4.12.2"
     ],
     "capabilities": {
         "tools": true,
         "resources": true
+    },
+    "api": {
+        "base_url": "https://gitmcp.io/simakovvv/wiki-mcp-server",
+        "endpoints": {
+            "search": {
+                "path": "/search",
+                "method": "POST",
+                "sse": true
+            },
+            "evaluate": {
+                "path": "/evaluate",
+                "method": "POST",
+                "sse": false
+            },
+            "analyze": {
+                "path": "/analyze",
+                "method": "POST",
+                "sse": false
+            },
+            "stats": {
+                "path": "/stats",
+                "method": "GET",
+                "sse": false
+            }
+        }
     }
 } 
