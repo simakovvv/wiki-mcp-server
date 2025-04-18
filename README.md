@@ -83,6 +83,101 @@ Update your `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.c
 5. Enter plugin name: `wiki-mcp-server Docs`
 6. Enter SSE URL: `https://gitmcp.io/simakovvv/wiki-mcp-server`
 
+## Testing the Server
+
+After integrating the server with your chat bot, you can test it using the following commands:
+
+### 1. Search Test
+```bash
+@wiki-mcp-server search "king penguin species" --max-results 5 --include-images true --model gpt-3.5-turbo
+```
+This will search for articles about king penguin species and include images in the results.
+
+### 2. Evaluate Test
+```bash
+@wiki-mcp-server evaluate --article '{"title": "King Penguin", "content": "King penguins are large penguins...", "url": "https://en.wikipedia.org/wiki/King_penguin"}' --model gpt-3.5-turbo
+```
+This will evaluate the relevance of the provided article.
+
+### 3. Analyze Test
+```bash
+@wiki-mcp-server analyze --article '{"title": "King Penguin", "content": "King penguins are large penguins...", "url": "https://en.wikipedia.org/wiki/King_penguin"}' --model gpt-3.5-turbo
+```
+This will perform a detailed analysis of the provided article.
+
+### 4. Stats Test
+```bash
+@wiki-mcp-server stats
+```
+This will retrieve server usage statistics.
+
+### Expected Responses
+
+1. **Search Response**:
+```json
+{
+  "articles": [
+    {
+      "title": "King Penguin",
+      "url": "https://en.wikipedia.org/wiki/King_penguin",
+      "summary": "The king penguin is the second largest species of penguin...",
+      "relevance_score": 0.95,
+      "images": [
+        {
+          "url": "https://upload.wikimedia.org/...",
+          "caption": "King penguins in their natural habitat"
+        }
+      ]
+    }
+  ]
+}
+```
+
+2. **Evaluate Response**:
+```json
+{
+  "relevance_score": 0.95,
+  "key_points": [
+    "King penguins are the second largest penguin species",
+    "They inhabit sub-Antarctic islands",
+    "They have a unique breeding cycle"
+  ],
+  "confidence": 0.9
+}
+```
+
+3. **Analyze Response**:
+```json
+{
+  "summary": "Detailed analysis of the King Penguin article...",
+  "key_insights": [
+    "Physical characteristics",
+    "Habitat and distribution",
+    "Behavior and ecology"
+  ],
+  "confidence": 0.92
+}
+```
+
+4. **Stats Response**:
+```json
+{
+  "total_requests": 100,
+  "endpoint_usage": {
+    "search": 50,
+    "evaluate": 30,
+    "analyze": 20
+  },
+  "model_usage": {
+    "gpt-3.5-turbo": 80,
+    "gpt-4": 15,
+    "claude-2": 5
+  },
+  "errors": 2,
+  "last_updated": "2024-04-18T12:00:00Z"
+}
+```
+
 ## API Endpoints
 
 ### Search Articles
