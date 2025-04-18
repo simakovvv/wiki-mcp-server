@@ -74,5 +74,164 @@
   "capabilities": {
     "tools": true,
     "resources": true
+  },
+  "mcpServers": {
+    "wiki-mcp-server": {
+      "type": "sse",
+      "url": "https://gitmcp.io/simakovvv/wiki-mcp-server/sse",
+      "tools": {
+        "search_articles": {
+          "name": "search_articles",
+          "description": "Search for Wikipedia articles by phrase",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "Search phrase"
+              },
+              "limit": {
+                "type": "integer",
+                "description": "Maximum number of results",
+                "default": 5
+              },
+              "include_images": {
+                "type": "boolean",
+                "description": "Whether to include images in results",
+                "default": false
+              }
+            },
+            "required": ["query"]
+          },
+          "returns": {
+            "type": "object",
+            "properties": {
+              "articles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "description": "Article title"
+                    },
+                    "url": {
+                      "type": "string",
+                      "description": "Article URL"
+                    },
+                    "snippet": {
+                      "type": "string",
+                      "description": "Article snippet"
+                    },
+                    "relevance_score": {
+                      "type": "number",
+                      "description": "Relevance score"
+                    },
+                    "images": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "url": {
+                            "type": "string",
+                            "description": "Image URL"
+                          },
+                          "caption": {
+                            "type": "string",
+                            "description": "Image caption"
+                          },
+                          "width": {
+                            "type": "integer",
+                            "description": "Image width"
+                          },
+                          "height": {
+                            "type": "integer",
+                            "description": "Image height"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "evaluate_article": {
+          "name": "evaluate_article",
+          "description": "Evaluate article relevance",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "article": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "Article title"
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "Article content"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Article URL"
+                  }
+                }
+              },
+              "model": {
+                "type": "string",
+                "description": "AI model to use",
+                "default": "gpt-3.5-turbo"
+              }
+            },
+            "required": ["article"]
+          }
+        },
+        "analyze_article": {
+          "name": "analyze_article",
+          "description": "Analyze article content",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "article": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "Article title"
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "Article content"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Article URL"
+                  }
+                }
+              },
+              "model": {
+                "type": "string",
+                "description": "AI model to use",
+                "default": "gpt-3.5-turbo"
+              }
+            },
+            "required": ["article"]
+          }
+        }
+      },
+      "resources": {
+        "article": {
+          "pattern": "wiki://{title}",
+          "description": "Access Wikipedia article by title"
+        },
+        "search": {
+          "pattern": "wiki://search/{query}",
+          "description": "Search Wikipedia articles"
+        }
+      }
+    }
   }
 } 

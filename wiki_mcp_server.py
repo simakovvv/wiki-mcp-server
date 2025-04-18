@@ -259,12 +259,13 @@ class WikipediaMCPServer:
                 return self.get_article(title=path)
         return {"error": f"Invalid resource URL: {url}"}
 
-    def search_articles(self, query, limit=5):
+    def search_articles(self, query, limit=5, include_images=False):
         """
         Search Wikipedia articles
         """
         url = "https://en.wikipedia.org/w/api.php"
         
+        # First, search for articles
         params = {
             "action": "query",
             "list": "search",
@@ -282,15 +283,72 @@ class WikipediaMCPServer:
         data = response.json()
         results = data.get("query", {}).get("search", [])
         
-        return [
-            {
+        articles = []
+        for article in results:
+            article_data = {
                 "title": article.get("title", ""),
                 "url": f"https://en.wikipedia.org/wiki/{article.get('title', '').replace(' ', '_')}",
                 "snippet": article.get("snippet", ""),
                 "relevance_score": self.evaluate_relevance_llm(article, query)
             }
-            for article in results
-        ]
+            
+            # Get images if requested
+            if include_images:
+                article_data["images"] = self.get_article_images(article.get("title", ""))
+            
+            articles.append(article_data)
+        
+        return articles
+
+    def get_article_images(self, title):
+        """
+        Get images from a Wikipedia article
+        """
+        url = "https://en.wikipedia.org/w/api.php"
+        
+        params = {
+            "action": "query",
+            "titles": title,
+            "prop": "images|imageinfo",
+            "iiprop": "url|dimensions|mime|extmetadata",
+            "format": "json"
+        }
+        
+        time.sleep(REQUEST_DELAY)
+        response = requests.get(url, params=params)
+        data = response.json()
+        
+        images = []
+        pages = data.get("query", {}).get("pages", {})
+        
+        for page in pages.values():
+            for image in page.get("images", []):
+                # Get image info
+                image_params = {
+                    "action": "query",
+                    "titles": image["title"],
+                    "prop": "imageinfo",
+                    "iiprop": "url|dimensions|mime|extmetadata",
+                    "format": "json"
+                }
+                
+                time.sleep(REQUEST_DELAY)
+                image_response = requests.get(url, params=image_params)
+                image_data = image_response.json()
+                
+                for page_data in image_data.get("query", {}).get("pages", {}).values():
+                    for imageinfo in page_data.get("imageinfo", []):
+                        if imageinfo["mime"].startswith("image/"):
+                            metadata = imageinfo.get("extmetadata", {})
+                            images.append({
+                                "url": imageinfo["url"],
+                                "caption": metadata.get("ImageDescription", {}).get("value", ""),
+                                "width": imageinfo.get("width", 0),
+                                "height": imageinfo.get("height", 0)
+                            })
+                            break
+        
+        return images
 
     def get_article(self, title):
         """
@@ -504,6 +562,58 @@ async def analyze(request: AnalyzeRequest):
 @app.get("/stats")
 async def stats():
     return load_stats()
+
+@app.get("/sse")
+async def sse_endpoint(request: Request):
+    """
+    SSE endpoint for MCP protocol
+    """
+    async def generate():
+        try:
+            # Send initial response with tools and resources
+            server = WikipediaMCPServer()
+            tools = server.get_tools()
+            resources = server.get_resources()
+            
+            yield "data: " + json.dumps({
+                "type": "init",
+                "tools": tools["tools"],
+                "resources": resources["resources"]
+            }) + "\n\n"
+            
+            # Keep connection alive
+            while True:
+                await asyncio.sleep(KEEPALIVE_TIMEOUT / 2)
+                yield "data: " + json.dumps({"type": "ping"}) + "\n\n"
+                
+        except Exception as e:
+            yield "data: " + json.dumps({"type": "error", "message": str(e)}) + "\n\n"
+    
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Transfer-Encoding": "chunked"
+        }
+    )
+
+@app.post("/mcp")
+async def mcp_endpoint(request: Request):
+    """
+    Main MCP endpoint for handling tool calls
+    """
+    try:
+        data = await request.json()
+        server = WikipediaMCPServer()
+        response = server.handle_request(data)
+        return JSONResponse(content=response)
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
 
 def main():
     """
