@@ -12,12 +12,17 @@ import time
 from datetime import datetime
 import uuid
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from dotenv import load_dotenv
+import asyncio
+from starlette.background import BackgroundTask
+
+# Load environment variables
+load_dotenv()
 
 # Initialize NLTK and spaCy
 nltk.download('punkt')
@@ -32,8 +37,15 @@ lemmatizer = WordNetLemmatizer()
 MAX_ARTICLES_PER_PHRASE = 5
 REQUEST_DELAY = 1
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+SERVER_TIMEOUT = int(os.getenv("SERVER_TIMEOUT", "300"))
+KEEPALIVE_TIMEOUT = int(os.getenv("KEEPALIVE_TIMEOUT", "60"))
+MAX_CONNECTIONS = int(os.getenv("MAX_CONNECTIONS", "100"))
 
-app = FastAPI()
+app = FastAPI(
+    title="Wikipedia MCP Server",
+    description="MCP server for searching and analyzing Wikipedia articles",
+    version="1.0.0"
+)
 
 # Enable CORS
 app.add_middleware(
@@ -43,6 +55,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add timeout middleware
+@app.middleware("http")
+async def timeout_middleware(request: Request, call_next):
+    try:
+        return await asyncio.wait_for(call_next(request), timeout=SERVER_TIMEOUT)
+    except asyncio.TimeoutError:
+        return JSONResponse(
+            status_code=504,
+            content={"detail": "Request timeout"}
+        )
+
+# Keep-alive middleware
+@app.middleware("http")
+async def add_keep_alive(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path == "/search":
+        response.headers["Connection"] = "keep-alive"
+        response.headers["Keep-Alive"] = f"timeout={KEEPALIVE_TIMEOUT}"
+    return response
 
 # Models
 class Article(BaseModel):
@@ -250,17 +282,15 @@ class WikipediaMCPServer:
         data = response.json()
         results = data.get("query", {}).get("search", [])
         
-        return {
-            "results": [
-                {
-                    "title": article.get("title", ""),
-                    "url": f"https://en.wikipedia.org/wiki/{article.get('title', '').replace(' ', '_')}",
-                    "snippet": article.get("snippet", ""),
-                    "relevance_score": self.evaluate_relevance_llm(article, query)
-                }
-                for article in results
-            ]
-        }
+        return [
+            {
+                "title": article.get("title", ""),
+                "url": f"https://en.wikipedia.org/wiki/{article.get('title', '').replace(' ', '_')}",
+                "snippet": article.get("snippet", ""),
+                "relevance_score": self.evaluate_relevance_llm(article, query)
+            }
+            for article in results
+        ]
 
     def get_article(self, title):
         """
@@ -363,65 +393,45 @@ class WikipediaMCPServer:
 async def search(topic: str, limit: int = 5, model: str = "gpt-3.5-turbo"):
     async def generate():
         try:
+            # Send initial response
+            yield "data: " + json.dumps({"status": "started"}) + "\n\n"
+            await asyncio.sleep(0.1)  # Small delay for connection establishment
+            
+            # Keep-alive ping
+            async def send_ping():
+                while True:
+                    await asyncio.sleep(KEEPALIVE_TIMEOUT / 2)
+                    yield "data: " + json.dumps({"status": "ping"}) + "\n\n"
+            
+            # Start keep-alive task
+            asyncio.create_task(send_ping())
+            
+            # Process search
             update_stats("search", model)
+            server = WikipediaMCPServer()
+            articles = await server.search_articles(topic, limit)
             
-            # Generate search query using LLM
-            headers = {
-                "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
-                "Content-Type": "application/json"
-            }
+            # Send results
+            for article in articles:
+                yield "data: " + json.dumps({"status": "processing", "article": article}) + "\n\n"
+                await asyncio.sleep(0.1)  # Prevent flooding
             
-            prompt = f"Generate {limit} Wikipedia article titles about {topic}"
-            data = {
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}]
-            }
+            # Send completion
+            yield "data: " + json.dumps({"status": "completed"}) + "\n\n"
             
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json=data
-            )
-            
-            if response.status_code != 200:
-                raise HTTPException(status_code=500, detail="Failed to generate search query")
-            
-            titles = response.json()["choices"][0]["message"]["content"].split("\n")
-            
-            for title in titles:
-                if not title.strip():
-                    continue
-                    
-                # Search Wikipedia
-                wiki_url = f"https://en.wikipedia.org/w/api.php"
-                params = {
-                    "action": "query",
-                    "format": "json",
-                    "list": "search",
-                    "srsearch": title,
-                    "srlimit": 1
-                }
-                
-                wiki_response = requests.get(wiki_url, params=params)
-                if wiki_response.status_code != 200:
-                    continue
-                
-                results = wiki_response.json()
-                if not results.get("query", {}).get("search"):
-                    continue
-                
-                article = results["query"]["search"][0]
-                yield f"data: {json.dumps({
-                    'title': article['title'],
-                    'snippet': article['snippet'],
-                    'url': f"https://en.wikipedia.org/wiki/{article['title'].replace(' ', '_')}"
-                })}\n\n"
-                
         except Exception as e:
             update_stats("search", model, error=True)
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield "data: " + json.dumps({"status": "error", "message": str(e)}) + "\n\n"
     
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Transfer-Encoding": "chunked"
+        }
+    )
 
 @app.post("/evaluate")
 async def evaluate(request: EvaluateRequest):

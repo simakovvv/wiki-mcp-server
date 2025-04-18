@@ -17,13 +17,25 @@
     "pydantic==2.5.2",
     "beautifulsoup4==4.12.2"
   ],
+  "server": {
+    "timeout": 300,
+    "keepalive": true,
+    "max_connections": 100
+  },
   "api": {
     "base_url": "https://gitmcp.io/simakovvv/wiki-mcp-server",
+    "timeout": 60,
+    "retry": {
+      "max_attempts": 3,
+      "delay": 1000
+    },
     "endpoints": {
       "search": {
         "path": "/search",
         "method": "POST",
         "sse": true,
+        "timeout": 120,
+        "keepalive": true,
         "body": {
           "topic": "string",
           "max_results": "integer",
@@ -35,6 +47,7 @@
         "path": "/evaluate",
         "method": "POST",
         "sse": false,
+        "timeout": 30,
         "body": {
           "article": "object",
           "model": "string"
@@ -44,6 +57,7 @@
         "path": "/analyze",
         "method": "POST",
         "sse": false,
+        "timeout": 30,
         "body": {
           "article": "object",
           "model": "string"
@@ -52,7 +66,8 @@
       "stats": {
         "path": "/stats",
         "method": "GET",
-        "sse": false
+        "sse": false,
+        "timeout": 10
       }
     }
   },
