@@ -447,39 +447,29 @@ class WikipediaMCPServer:
             print(f"Error evaluating relevance: {str(e)}")
             return 0.0
 
-@app.get("/search")
-async def search(topic: str, limit: int = 5, model: str = "gpt-3.5-turbo"):
+@app.post("/search")
+async def search(request: SearchRequest):
+    update_stats("search", request.model)
+    
     async def generate():
         try:
-            # Send initial response
-            yield "data: " + json.dumps({"status": "started"}) + "\n\n"
-            await asyncio.sleep(0.1)  # Small delay for connection establishment
-            
-            # Keep-alive ping
-            async def send_ping():
-                while True:
-                    await asyncio.sleep(KEEPALIVE_TIMEOUT / 2)
-                    yield "data: " + json.dumps({"status": "ping"}) + "\n\n"
-            
-            # Start keep-alive task
-            asyncio.create_task(send_ping())
-            
-            # Process search
-            update_stats("search", model)
             server = WikipediaMCPServer()
-            articles = await server.search_articles(topic, limit)
+            articles = await server.search_articles(request.topic, request.limit)
             
-            # Send results
+            # Send initial status
+            yield f"data: {json.dumps({'status': 'started'})}\n\n"
+            
+            # Send articles as they are found
             for article in articles:
-                yield "data: " + json.dumps({"status": "processing", "article": article}) + "\n\n"
-                await asyncio.sleep(0.1)  # Prevent flooding
+                yield f"data: {json.dumps({'status': 'processing', 'article': article})}\n\n"
+                await asyncio.sleep(0.1)  # Small delay between articles
             
-            # Send completion
-            yield "data: " + json.dumps({"status": "completed"}) + "\n\n"
+            # Send completion status
+            yield f"data: {json.dumps({'status': 'completed'})}\n\n"
             
         except Exception as e:
-            update_stats("search", model, error=True)
-            yield "data: " + json.dumps({"status": "error", "message": str(e)}) + "\n\n"
+            update_stats("search", request.model, error=True)
+            yield f"data: {json.dumps({'status': 'error', 'error': str(e)})}\n\n"
     
     return StreamingResponse(
         generate(),
@@ -487,7 +477,7 @@ async def search(topic: str, limit: int = 5, model: str = "gpt-3.5-turbo"):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Transfer-Encoding": "chunked"
+            "X-Accel-Buffering": "no"
         }
     )
 
