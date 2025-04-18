@@ -1,10 +1,181 @@
-# Wikipedia Search MCP Server
+# Wikipedia MCP Server
 
-A GitMCP server for searching and analyzing Wikipedia articles. This server provides a powerful interface for searching, evaluating, and analyzing Wikipedia content through various AI models.
+A GitMCP server for searching and analyzing Wikipedia articles using various AI models. The server provides real-time search capabilities with image support and article analysis.
 
-## MCP Server URL
+## Server URL
 
 `https://gitmcp.io/simakovvv/wiki-mcp-server`
+
+## API Reference
+
+### Search Articles
+
+Search for Wikipedia articles with optional image support.
+
+**Endpoint**: `/search`
+**Method**: POST
+**SSE**: Enabled (Server-Sent Events)
+
+**Request Body**:
+```json
+{
+  "topic": "string",         // Search query
+  "max_results": 5,         // Optional: Number of results (default: 5)
+  "include_images": true,   // Optional: Include images (default: false)
+  "model": "gpt-3.5-turbo" // Optional: AI model to use
+}
+```
+
+**Response Stream**:
+1. Initial Response:
+```json
+{
+  "status": "started"
+}
+```
+
+2. Processing Updates (per article):
+```json
+{
+  "status": "processing",
+  "article": {
+    "title": "Article Title",
+    "url": "https://en.wikipedia.org/wiki/Article_Title",
+    "snippet": "Article snippet text...",
+    "relevance_score": 0.95,
+    "images": [
+      {
+        "url": "https://upload.wikimedia.org/...",
+        "caption": "Image description",
+        "width": 800,
+        "height": 600
+      }
+    ]
+  }
+}
+```
+
+3. Completion:
+```json
+{
+  "status": "completed"
+}
+```
+
+### Evaluate Article
+
+Evaluate article relevance using AI models.
+
+**Endpoint**: `/evaluate`
+**Method**: POST
+**SSE**: Disabled
+
+**Request Body**:
+```json
+{
+  "article": {
+    "title": "string",
+    "snippet": "string",
+    "url": "string"
+  },
+  "model": "gpt-3.5-turbo" // Optional: AI model to use
+}
+```
+
+**Response**:
+```json
+{
+  "relevance": "Detailed relevance analysis...",
+  "article": {
+    "title": "Article Title",
+    "snippet": "Article content...",
+    "url": "Article URL"
+  }
+}
+```
+
+### Analyze Article
+
+Perform detailed article analysis using AI models.
+
+**Endpoint**: `/analyze`
+**Method**: POST
+**SSE**: Disabled
+
+**Request Body**:
+```json
+{
+  "article": {
+    "title": "string",
+    "snippet": "string",
+    "url": "string"
+  },
+  "model": "gpt-3.5-turbo" // Optional: AI model to use
+}
+```
+
+**Response**:
+```json
+{
+  "analysis": "Detailed article analysis...",
+  "article": {
+    "title": "Article Title",
+    "snippet": "Article content...",
+    "url": "Article URL"
+  }
+}
+```
+
+### Server Statistics
+
+Get server usage statistics.
+
+**Endpoint**: `/stats`
+**Method**: GET
+**SSE**: Disabled
+
+**Response**:
+```json
+{
+  "total_requests": 100,
+  "endpoints": {
+    "search": 50,
+    "evaluate": 30,
+    "analyze": 20
+  },
+  "models": {
+    "gpt-3.5-turbo": 80,
+    "gpt-4": 15,
+    "claude-2": 5
+  },
+  "errors": 2,
+  "last_update": "2024-04-18T12:00:00Z"
+}
+```
+
+## Integration with Chat Bots
+
+### Available Commands
+
+1. Search Articles:
+```bash
+@wiki-mcp-server search "your search query" --max-results 5 --include-images true --model gpt-3.5-turbo
+```
+
+2. Evaluate Article:
+```bash
+@wiki-mcp-server evaluate --article '{"title": "Article Title", "content": "Article content...", "url": "Article URL"}' --model gpt-3.5-turbo
+```
+
+3. Analyze Article:
+```bash
+@wiki-mcp-server analyze --article '{"title": "Article Title", "content": "Article content...", "url": "Article URL"}' --model gpt-3.5-turbo
+```
+
+4. Get Statistics:
+```bash
+@wiki-mcp-server stats
+```
 
 ## Integration Examples
 
@@ -13,7 +184,7 @@ Update your `~/.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
-    "wiki-mcp-server Docs": {
+    "wiki-mcp-server": {
       "url": "https://gitmcp.io/simakovvv/wiki-mcp-server"
     }
   }
@@ -25,7 +196,7 @@ Update your `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "wiki-mcp-server Docs": {
+    "wiki-mcp-server": {
       "command": "npx",
       "args": [
         "mcp-remote",
@@ -36,204 +207,18 @@ Update your `claude_desktop_config.json`:
 }
 ```
 
-### Windsurf
-Update your `~/.codeium/windsurf/mcp_config.json`:
-```json
-{
-  "mcpServers": {
-    "wiki-mcp-server Docs": {
-      "serverUrl": "https://gitmcp.io/simakovvv/wiki-mcp-server"
-    }
-  }
-}
-```
-
 ### VSCode
 Update your `.vscode/mcp.json`:
 ```json
 {
   "servers": {
-    "wiki-mcp-server Docs": {
+    "wiki-mcp-server": {
       "type": "sse",
       "url": "https://gitmcp.io/simakovvv/wiki-mcp-server"
     }
   }
 }
 ```
-
-### Cline
-Update your `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`:
-```json
-{
-  "mcpServers": {
-    "wiki-mcp-server Docs": {
-      "url": "https://gitmcp.io/simakovvv/wiki-mcp-server",
-      "disabled": false,
-      "autoApprove": []
-    }
-  }
-}
-```
-
-### Highlight AI
-1. Open Highlight AI and click the plugins icon (@ symbol) in the sidebar
-2. Click **Installed Plugins** at the top of the sidebar
-3. Select **Custom Plugin**
-4. Click **Add a plugin using a custom SSE URL**
-5. Enter plugin name: `wiki-mcp-server Docs`
-6. Enter SSE URL: `https://gitmcp.io/simakovvv/wiki-mcp-server`
-
-## Testing the Server
-
-After integrating the server with your chat bot, you can test it using the following commands:
-
-### 1. Search Test
-```bash
-@wiki-mcp-server search "king penguin species" --max-results 5 --include-images true --model gpt-3.5-turbo
-```
-This will search for articles about king penguin species and include images in the results.
-
-### 2. Evaluate Test
-```bash
-@wiki-mcp-server evaluate --article '{"title": "King Penguin", "content": "King penguins are large penguins...", "url": "https://en.wikipedia.org/wiki/King_penguin"}' --model gpt-3.5-turbo
-```
-This will evaluate the relevance of the provided article.
-
-### 3. Analyze Test
-```bash
-@wiki-mcp-server analyze --article '{"title": "King Penguin", "content": "King penguins are large penguins...", "url": "https://en.wikipedia.org/wiki/King_penguin"}' --model gpt-3.5-turbo
-```
-This will perform a detailed analysis of the provided article.
-
-### 4. Stats Test
-```bash
-@wiki-mcp-server stats
-```
-This will retrieve server usage statistics.
-
-### Expected Responses
-
-1. **Search Response**:
-```json
-{
-  "articles": [
-    {
-      "title": "King Penguin",
-      "url": "https://en.wikipedia.org/wiki/King_penguin",
-      "summary": "The king penguin is the second largest species of penguin...",
-      "relevance_score": 0.95,
-      "images": [
-        {
-          "url": "https://upload.wikimedia.org/...",
-          "caption": "King penguins in their natural habitat"
-        }
-      ]
-    }
-  ]
-}
-```
-
-2. **Evaluate Response**:
-```json
-{
-  "relevance_score": 0.95,
-  "key_points": [
-    "King penguins are the second largest penguin species",
-    "They inhabit sub-Antarctic islands",
-    "They have a unique breeding cycle"
-  ],
-  "confidence": 0.9
-}
-```
-
-3. **Analyze Response**:
-```json
-{
-  "summary": "Detailed analysis of the King Penguin article...",
-  "key_insights": [
-    "Physical characteristics",
-    "Habitat and distribution",
-    "Behavior and ecology"
-  ],
-  "confidence": 0.92
-}
-```
-
-4. **Stats Response**:
-```json
-{
-  "total_requests": 100,
-  "endpoint_usage": {
-    "search": 50,
-    "evaluate": 30,
-    "analyze": 20
-  },
-  "model_usage": {
-    "gpt-3.5-turbo": 80,
-    "gpt-4": 15,
-    "claude-2": 5
-  },
-  "errors": 2,
-  "last_updated": "2024-04-18T12:00:00Z"
-}
-```
-
-## API Endpoints
-
-### Search Articles
-- **Endpoint**: `/search`
-- **Method**: POST
-- **SSE**: Enabled
-- **Input**:
-  ```json
-  {
-    "topic": "string",
-    "max_results": "integer",
-    "include_images": "boolean",
-    "model": "string"
-  }
-  ```
-- **Output**: Stream of search results with article metadata
-
-### Evaluate Article
-- **Endpoint**: `/evaluate`
-- **Method**: POST
-- **SSE**: Disabled
-- **Input**:
-  ```json
-  {
-    "article": {
-      "title": "string",
-      "content": "string",
-      "url": "string"
-    },
-    "model": "string"
-  }
-  ```
-- **Output**: Article evaluation with relevance score and key points
-
-### Analyze Article
-- **Endpoint**: `/analyze`
-- **Method**: POST
-- **SSE**: Disabled
-- **Input**:
-  ```json
-  {
-    "article": {
-      "title": "string",
-      "content": "string",
-      "url": "string"
-    },
-    "model": "string"
-  }
-  ```
-- **Output**: Detailed article analysis with summary and key insights
-
-### Get Statistics
-- **Endpoint**: `/stats`
-- **Method**: GET
-- **SSE**: Disabled
-- **Output**: Server usage statistics and performance metrics
 
 ## Available Models
 
@@ -245,24 +230,41 @@ The server supports the following AI models:
 
 ## Environment Variables
 
-Create a `.env` file with the following variables:
+Required environment variables:
 ```env
 OPENROUTER_API_KEY=your_api_key_here
-HOST=0.0.0.0
-PORT=8000
-DEBUG=false
-LOG_LEVEL=INFO
-LOG_FILE=server.log
-CACHE_TTL=3600
-MAX_CACHE_SIZE=1000
-RATE_LIMIT=100
-RATE_LIMIT_WINDOW=60
 ```
 
-## Requirements
+Optional configuration:
+```env
+SERVER_TIMEOUT=300        # Server timeout in seconds
+KEEPALIVE_TIMEOUT=60     # Keep-alive timeout for SSE
+MAX_CONNECTIONS=100      # Maximum concurrent connections
+```
 
-- Python 3.8+
-- Dependencies listed in `requirements.txt`
+## Error Handling
+
+All endpoints return standard HTTP status codes:
+- 200: Success
+- 400: Bad Request (invalid parameters)
+- 401: Unauthorized (invalid API key)
+- 404: Not Found
+- 429: Too Many Requests
+- 500: Internal Server Error
+- 504: Gateway Timeout
+
+Error responses include a detailed message:
+```json
+{
+  "error": "Error description"
+}
+```
+
+## Rate Limiting
+
+- Default: 100 requests per minute
+- Configurable via `RATE_LIMIT` environment variable
+- Rate limit window: 60 seconds
 
 ## License
 
